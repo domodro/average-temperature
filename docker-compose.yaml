@@ -100,8 +100,10 @@ services:
       CONNECT_REST_ADVERTISED_HOST_NAME: postgres-sink
       CONNECT_REST_PORT: 8083
       CONNECT_GROUP_ID: postgres-sink
-      CONNECT_KEY_CONVERTER: io.confluent.connect.json.JsonSchemaConverter
-      CONNECT_VALUE_CONVERTER: io.confluent.connect.json.JsonSchemaConverter
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       CONNECT_PLUGIN_PATH: /usr/share/confluent-hub-components
       CONNECT_CONFIG_STORAGE_TOPIC: postgres_sink_configs
       CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
