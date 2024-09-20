@@ -1,0 +1,40 @@
+openapi: 3.0.0
+info:
+  version: 1.0.0
+  title: Temperature API
+  description: The temperature API
+paths:
+  /temperature/city/{city}:
+    get:
+      summary: Get yearly temperature average for given city
+      operationId: getTemperature
+      parameters:
+        - in: path
+          name: city
+          schema:
+            type: string
+          required: true
+          description: City name to get the yearly temperature average
+      responses:
+        '200':
+          description: A list of years and average temperatures
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/YearTemperatureList'
+
+components:
+  schemas:
+    YearTemperatureList:
+      type: array
+      items:
+        $ref: '#/components/schemas/YearTemperature'
+    YearTemperature:
+      type: object
+      properties:
+        year:
+          type: string
+          example: 2024
+        averageTemperature:
+          type: number
+          format: double

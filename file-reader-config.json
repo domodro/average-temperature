@@ -1,0 +1,9 @@
+{
+    "name": "file-reader",
+    "config": {
+        "connector.class": "FileStreamSource",
+        "tasks.max": 1,
+        "topic": "TEMPERATURE_RAW",
+        "file": "/file-reader/measure-source.csv"
+    }
+}

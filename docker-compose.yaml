@@ -1,0 +1,147 @@
+version: '3'
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    environment:
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_NODE_ID: 1
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5A=='
+      CONFLUENT_METRICS_ENABLE: 'false'
+    healthcheck:
+      test: kafka-topics --bootstrap-server kafka:9092 --list
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.1
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: curl --fail http://schema-registry:8081 || exit 1
+      interval: 10s
+      retries: 10
+      start_period: 20s
+
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: pg_isready -U postgres -d postgres
+      interval: 10s
+      retries: 10
+      start_period: 20s
+
+  file-reader:
+    image: confluentinc/cp-kafka-connect:7.7.1
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: file-reader
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: file-reader
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_PLUGIN_PATH: /usr/share/filestream-connectors
+      CONNECT_CONFIG_STORAGE_TOPIC: file_reader_configs
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_TOPIC: file_reader_offsets
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: file_reader_statuses
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: 'false'
+    volumes:
+      - ./example_file.csv:/file-reader/measure-source.csv
+    depends_on:
+      kafka:
+        condition: service_healthy
+  file-reader-config:
+    image: alpine/curl:8.10.0
+    command: -v -X POST -H "Accept:application/json" -H "Content-Type:application/json" http://file-reader:8083/connectors/ -d @file-reader-config.json
+    working_dir: /config
+    volumes:
+      - ./file-reader-config.json:/config/file-reader-config.json
+    depends_on:
+      file-reader:
+        condition: service_healthy
+
+  kafka-stream:
+    image: confluentinc/ksqldb-server:0.29.0
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: kafka:9092
+      KSQL_KSQL_SERVICE_ID: ksql_service
+      KSQL_KSQL_QUERIES_FILE: /config/ksql-config.sql
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: 'false'
+    volumes:
+      - ./ksql-config.sql:/config/ksql-config.sql
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+
+  postgres-sink:
+    build: ./postgres-sink
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: postgres-sink
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: postgres-sink
+      CONNECT_KEY_CONVERTER: io.confluent.connect.json.JsonSchemaConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.json.JsonSchemaConverter
+      CONNECT_PLUGIN_PATH: /usr/share/confluent-hub-components
+      CONNECT_CONFIG_STORAGE_TOPIC: postgres_sink_configs
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_TOPIC: postgres_sink_offsets
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: postgres_sink_statuses
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: 'false'
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      temperature-app:
+        condition: service_healthy
+  postgres-sink-config:
+    image: alpine/curl:8.10.0
+    command: -v -X POST -H "Accept:application/json" -H "Content-Type:application/json" http://postgres-sink:8083/connectors/ -d @postgres-sink-config.json
+    working_dir: /config
+    volumes:
+      - ./postgres-sink-config.json:/config/postgres-sink-config.json
+    depends_on:
+      postgres-sink:
+        condition: service_healthy
+
+  temperature-app:
+    build: ./temperature-app
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/postgres
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    ports:
+      - 8080:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: wget -T5 -qO- http://temperature-app:8080/actuator/health | grep UP || exit 1
+      interval: 10s
+      retries: 10
+      start_period: 20s

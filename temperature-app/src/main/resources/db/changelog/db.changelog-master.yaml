@@ -1,0 +1,32 @@
+databaseChangeLog:
+  - objectQuotingStrategy: QUOTE_ALL_OBJECTS
+  - changeSet:
+      id: crate-temperature-average
+      author: dodrowski
+      changes:
+        - createTable:
+            tableName: TEMPERATURE_AVERAGE
+            columns:
+              - column:
+                  name: CITY
+                  type: varchar(255)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: YEAR
+                  type: varchar(4)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: TEMPERATURE
+                  type: decimal
+                  constraints:
+                    nullable: false
+        - createIndex:
+            columns:
+              - column:
+                  name: CITY
+            indexName: IDX_TEMPERATURE_AVERAGE_CITY
+            tableName: TEMPERATURE_AVERAGE
